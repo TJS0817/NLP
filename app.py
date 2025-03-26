@@ -1,21 +1,47 @@
 import streamlit as st
 import pandas as pd
 import pickle
-import numpy as np
+import os
 
-# Load trained model and encoder
+# Load models and encoder
 @st.cache_data
-def load_model():
-    with open("model.pkl", "rb") as file:
-        model = pickle.load(file)
-    with open("encoder.pkl", "rb") as file:
-        encoder = pickle.load(file)
-    return model, encoder
+def load_models():
+    model_paths = {
+        "Decision Tree": "Decision Tree_model.pkl",
+        "Linear SVC": "Linear SVC_model.pkl",
+        "Random Forest": "Random Forest_model.pkl"
+    }
+    
+    models = {}
+    for name, path in model_paths.items():
+        if os.path.exists(path):
+            with open(path, "rb") as file:
+                models[name] = pickle.load(file)
+        else:
+            st.error(f"Model file {path} not found!")
 
-model, encoder = load_model()
+    # Load encoder
+    encoder_path = "encoder.pkl"
+    if os.path.exists(encoder_path):
+        with open(encoder_path, "rb") as file:
+            encoder = pickle.load(file)
+    else:
+        st.error("Encoder file not found!")
+        encoder = None
+
+    return models, encoder
+
+models, encoder = load_models()
+
+if not models or encoder is None:
+    st.stop()  # Stop execution if models or encoder is missing
 
 st.title("Mental Health Prediction Tool")
 st.write("This tool predicts mental health based on social media usage patterns.")
+
+# User selects the model
+selected_model_name = st.selectbox("Select a Model", list(models.keys()))
+selected_model = models[selected_model_name]
 
 # User Input Form
 age = st.number_input("Age", min_value=10, max_value=100, value=25)
@@ -34,5 +60,5 @@ input_data[["Gender", "Platform"]] = encoder.transform(input_data[["Gender", "Pl
 
 # Predict Mental Health State
 if st.button("Predict Mental Health State"):
-    prediction = model.predict(input_data)
-    st.subheader(f"Predicted Mental Health State: {prediction[0]}")
+    prediction = selected_model.predict(input_data)
+    st.subheader(f"Predicted Mental Health State: {prediction[0]} (Using {selected_model_name})")
