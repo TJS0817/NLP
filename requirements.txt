@@ -1,0 +1,10 @@
+streamlit
+pandas
+numpy
+scikit-learn
+nltk
+spacy
+torch
+transformers
+pickle5  # Required for loading pickled models
+joblib   # Alternative for loading models
