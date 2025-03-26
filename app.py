@@ -3,9 +3,10 @@ import pandas as pd
 import pickle
 import os
 
-# Load models and encoder
-@st.cache_data
+# Load models and preprocessing tools
+@st.cache_data  # Cache loaded models and tools to improve performance
 def load_models():
+    # Define model paths
     model_paths = {
         "Decision Tree": "Decision Tree_model.pkl",
         "Linear SVC": "Linear SVC_model.pkl",
@@ -19,46 +20,67 @@ def load_models():
                 models[name] = pickle.load(file)
         else:
             st.error(f"Model file {path} not found!")
+            return None, None, None  # Stop loading if any model is missing
 
-    # Load encoder
-    encoder_path = "encoder.pkl"
-    if os.path.exists(encoder_path):
-        with open(encoder_path, "rb") as file:
-            encoder = pickle.load(file)
+    # Load vectorizer and scaler
+    vectorizer_path = "tfidf_vectorizer.pkl"
+    scaler_path = "scaler.pkl"
+    if os.path.exists(vectorizer_path) and os.path.exists(scaler_path):
+        with open(vectorizer_path, "rb") as file:
+            vectorizer = pickle.load(file)
+        with open(scaler_path, "rb") as file:
+            scaler = pickle.load(file)
     else:
-        st.error("Encoder file not found!")
-        encoder = None
+        st.error("Vectorizer or Scaler file not found!")
+        return None, None, None  # Stop loading if preprocessing tools are missing
 
-    return models, encoder
+    return models, vectorizer, scaler
 
-models, encoder = load_models()
+models, vectorizer, scaler = load_models()
 
-if not models or encoder is None:
-    st.stop()  # Stop execution if models or encoder is missing
+# Check if models and preprocessing tools are loaded successfully
+if not models or vectorizer is None or scaler is None:
+    st.error("Failed to load models or preprocessing tools. Please check the file paths.")
+    st.stop()  # Stop execution if models or tools are missing
 
-st.title("Mental Health Prediction Tool")
-st.write("This tool predicts mental health based on social media usage patterns.")
+# Title and Description
+st.title("🧠 Mental Health Prediction Tool")
+st.write("""
+This tool predicts mental health categories based on text input.
+Enter a statement describing your symptoms or feelings, and the app will predict the corresponding mental health category.
+""")
 
 # User selects the model
 selected_model_name = st.selectbox("Select a Model", list(models.keys()))
 selected_model = models[selected_model_name]
 
 # User Input Form
-age = st.number_input("Age", min_value=10, max_value=100, value=25)
-gender = st.selectbox("Gender", ["Female", "Male", "Non-binary"])
-platform = st.selectbox("Social Media Platform", ["Instagram", "Twitter", "Facebook", "LinkedIn", "Snapchat", "WhatsApp", "Telegram"])
-daily_usage = st.slider("Daily Usage Time (minutes)", 0, 600, 120)
-posts_per_day = st.slider("Posts Per Day", 0, 50, 5)
-likes_per_day = st.slider("Likes Received Per Day", 0, 500, 50)
-comments_per_day = st.slider("Comments Received Per Day", 0, 200, 10)
-messages_per_day = st.slider("Messages Sent Per Day", 0, 500, 50)
-
-# Encode categorical data
-input_data = pd.DataFrame([[age, gender, platform, daily_usage, posts_per_day, likes_per_day, comments_per_day, messages_per_day]],
-                          columns=["Age", "Gender", "Platform", "Daily_Usage_Time", "Posts_Per_Day", "Likes_Received_Per_Day", "Comments_Received_Per_Day", "Messages_Sent_Per_Day"])
-input_data[["Gender", "Platform"]] = encoder.transform(input_data[["Gender", "Platform"]])
+user_input = st.text_area("Enter Your Statement (e.g., symptoms or feelings):", height=150)
 
 # Predict Mental Health State
-if st.button("Predict Mental Health State"):
-    prediction = selected_model.predict(input_data)
-    st.subheader(f"Predicted Mental Health State: {prediction[0]} (Using {selected_model_name})")
+if st.button("Predict Mental Health Category"):
+    if user_input.strip() == "":
+        st.error("Please provide valid input.")
+    else:
+        try:
+            # Preprocess the input text
+            user_input_vectorized = vectorizer.transform([user_input])  # Vectorize the text
+            user_input_scaled = scaler.transform(user_input_vectorized)  # Scale the vectorized input
+            
+            # Make prediction
+            prediction = selected_model.predict(user_input_scaled)[0]
+            
+            # Display the result
+            st.subheader(f"Predicted Mental Health Category: **{prediction}** (Using {selected_model_name})")
+            
+            # Display confidence scores if supported
+            if hasattr(selected_model, "predict_proba"):
+                probabilities = selected_model.predict_proba(user_input_scaled)[0]
+                categories = selected_model.classes_
+                confidence_scores = {cat: prob for cat, prob in zip(categories, probabilities)}
+                
+                st.write("Confidence Scores:")
+                for category, score in confidence_scores.items():
+                    st.write(f"{category}: {score:.2f}")
+        except Exception as e:
+            st.error(f"Error during prediction: {e}")
